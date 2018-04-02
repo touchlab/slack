@@ -1,10 +1,8 @@
 const nock = require('nock');
 const moment = require('moment');
 
-const helper = require('.');
+const { probot, models } = require('.');
 const fixtures = require('../fixtures');
-
-const { probot } = helper;
 
 const issuePayload = require('../fixtures/webhooks/issues.opened');
 const pullRequestPayload = require('../fixtures/webhooks/pull_request.opened');
@@ -26,7 +24,7 @@ const {
   Installation,
   SlackUser,
   GitHubUser,
-} = helper.robot.models;
+} = models;
 
 describe('Integration: notifications', () => {
   describe('to a subscribed channel', () => {
@@ -96,7 +94,7 @@ describe('Integration: notifications', () => {
         creatorId: slackUser.id,
       });
 
-      nock('https://api.github.com').get(`/repositories/${issuePayload.repository.id}`).times(2).reply(200, {
+      nock('https://api.github.com').get(`/repositories/${issuePayload.repository.id}`).reply(200, {
         full_name: issuePayload.repository.full_name,
       });
       nock('https://api.github.com', {
@@ -130,6 +128,60 @@ describe('Integration: notifications', () => {
       });
     });
 
+    test('issues closed does not make an API call to issues endpoint', async () => {
+      await Subscription.subscribe({
+        githubId: issuePayload.repository.id,
+        channelId: 'C001',
+        slackWorkspaceId: workspace.id,
+        installationId: installation.id,
+        creatorId: slackUser.id,
+      });
+
+      nock('https://api.github.com').get(`/repositories/${issuePayload.repository.id}`).reply(200, {
+        full_name: issuePayload.repository.full_name,
+      });
+
+      nock('https://slack.com').post('/api/chat.postMessage', (body) => {
+        expect(body).toMatchSnapshot();
+        return true;
+      }).reply(200, { ok: true });
+
+      await probot.receive({
+        event: 'issues',
+        payload: {
+          ...issuePayload,
+          action: 'closed',
+        },
+      });
+    });
+
+    test('issues reopened does not make an API call to issues endpoint', async () => {
+      await Subscription.subscribe({
+        githubId: issuePayload.repository.id,
+        channelId: 'C001',
+        slackWorkspaceId: workspace.id,
+        installationId: installation.id,
+        creatorId: slackUser.id,
+      });
+
+      nock('https://api.github.com').get(`/repositories/${issuePayload.repository.id}`).reply(200, {
+        full_name: issuePayload.repository.full_name,
+      });
+
+      nock('https://slack.com').post('/api/chat.postMessage', (body) => {
+        expect(body).toMatchSnapshot();
+        return true;
+      }).reply(200, { ok: true });
+
+      await probot.receive({
+        event: 'issues',
+        payload: {
+          ...issuePayload,
+          action: 'reopened',
+        },
+      });
+    });
+
     test('pull request opened', async () => {
       await Subscription.subscribe({
         githubId: pullRequestPayload.repository.id,
@@ -154,6 +206,56 @@ describe('Integration: notifications', () => {
       await probot.receive({
         event: 'pull_request',
         payload: pullRequestPayload,
+      });
+    });
+
+    test('pull request closed does not make an API call to issues endpoint', async () => {
+      await Subscription.subscribe({
+        githubId: pullRequestPayload.repository.id,
+        channelId: 'C001',
+        slackWorkspaceId: workspace.id,
+        installationId: installation.id,
+        creatorId: slackUser.id,
+      });
+
+      nock('https://api.github.com').get(`/repositories/${pullRequestPayload.repository.id}`).reply(200);
+
+      nock('https://slack.com').post('/api/chat.postMessage', (body) => {
+        expect(body).toMatchSnapshot();
+        return true;
+      }).reply(200, { ok: true });
+
+      await probot.receive({
+        event: 'pull_request',
+        payload: {
+          ...pullRequestPayload,
+          action: 'closed',
+        },
+      });
+    });
+
+    test('pull request reopened does not make an API call to issues endpoint', async () => {
+      await Subscription.subscribe({
+        githubId: pullRequestPayload.repository.id,
+        channelId: 'C001',
+        slackWorkspaceId: workspace.id,
+        installationId: installation.id,
+        creatorId: slackUser.id,
+      });
+
+      nock('https://api.github.com').get(`/repositories/${pullRequestPayload.repository.id}`).reply(200);
+
+      nock('https://slack.com').post('/api/chat.postMessage', (body) => {
+        expect(body).toMatchSnapshot();
+        return true;
+      }).reply(200, { ok: true });
+
+      await probot.receive({
+        event: 'pull_request',
+        payload: {
+          ...pullRequestPayload,
+          action: 'reopened',
+        },
       });
     });
 
@@ -305,7 +407,7 @@ describe('Integration: notifications', () => {
         settings: { reviews: true },
       });
 
-      nock('https://api.github.com').get(`/repositories/${reviewApproved.repository.id}`).times(2).reply(200);
+      nock('https://api.github.com').get(`/repositories/${reviewApproved.repository.id}`).reply(200);
       nock('https://slack.com').post('/api/chat.postMessage', (body) => {
         expect(body).toMatchSnapshot();
         return true;
@@ -357,7 +459,7 @@ describe('Integration: notifications', () => {
         creatorId: slackUser.id,
       });
 
-      nock('https://api.github.com').get(`/repositories/${deploymentStatusPendingPayload.repository.id}`).times(2).reply(200);
+      nock('https://api.github.com').get(`/repositories/${deploymentStatusPendingPayload.repository.id}`).reply(200);
       nock('https://slack.com').post('/api/chat.postMessage', (body) => {
         expect(body).toMatchSnapshot();
         return true;
